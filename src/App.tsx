@@ -1,4 +1,3 @@
-
 import { useState, useMemo, useEffect } from 'react'
 import FlightSimulator from './components/FlightSimulator'
 import ShotPresetViewer from './components/ShotPresetViewer'
@@ -26,7 +25,8 @@ import {
   ResponsiveContainer,
 } from 'recharts'
 
-type Page = 'home' | 'simulation' | 'shot-presets' | 'games' | 'two-player'
+type Page = 'home' | 'simulation' | 'shot-presets' | 'games'
+type GameSelection = 'menu' | 'one-player' | 'two-player'
 type ShotCategory = 'overhead' | 'net' | 'flat'
 type ShotDirection = 'straight' | 'crosscourt'
 type CameraView = 'side' | 'overhead' | 'player'
@@ -134,6 +134,7 @@ function SimulationCamera({ view }: { view: CameraView }) {
 
 function App() {
   const [activePage, setActivePage] = useState<Page>('home')
+  const [gameSelection, setGameSelection] = useState<GameSelection>('menu')
 
   // Simulation controls
   const [speed, setSpeed] = useState(20)
@@ -168,7 +169,7 @@ function App() {
       velocity: {
         x: horizontalSpeed * Math.sin(horizontalRadians),
         y: speed * Math.sin(verticalRadians),
-        z: -horizontalSpeed * Math.cos(horizontalRadians),
+        z: -horizontalSpeed * Math.cos(verticalRadians),
       },
     }
   }, [
@@ -275,6 +276,15 @@ function App() {
     shotPresets.find(shot => shot.id === selectedShotId) ??
     shotPresets[0]
 
+  const openGames = () => {
+    setGameSelection('menu')
+    setActivePage('games')
+  }
+
+  const backToGames = () => {
+    setGameSelection('menu')
+  }
+
   return (
     <div className="app">
       <header className="top-navigation">
@@ -304,16 +314,9 @@ function App() {
 
           <button
             className={activePage === 'games' ? 'active' : ''}
-            onClick={() => setActivePage('games')}
+            onClick={openGames}
           >
             Games
-          </button>
-
-          <button
-            className={activePage === 'two-player' ? 'active' : ''}
-            onClick={() => setActivePage('two-player')}
-          >
-            2 Player
           </button>
         </nav>
 
@@ -353,6 +356,13 @@ function App() {
                     onClick={() => setActivePage('shot-presets')}
                   >
                     Explore Shot Presets →
+                  </button>
+
+                  <button
+                    className="secondary-welcome-button"
+                    onClick={openGames}
+                  >
+                    Play Games →
                   </button>
                 </div>
               </section>
@@ -731,33 +741,85 @@ function App() {
             <header className="topbar">
               <div>
                 <p className="eyebrow">SHUTTLELAB ARCADE</p>
-                <h2>Games</h2>
+                <h2>
+                  {gameSelection === 'menu'
+                    ? 'Games'
+                    : gameSelection === 'one-player'
+                      ? 'Target Challenge'
+                      : '2 Player Badminton'}
+                </h2>
               </div>
             </header>
 
-            <TargetChallenge />
-          </>
-        )}
+            {gameSelection === 'menu' && (
+              <section className="games-menu">
+                <div className="games-menu-intro">
+                  <p className="eyebrow">CHOOSE YOUR GAME MODE</p>
+                  <h2>Ready to play?</h2>
+                  <p>
+                    Practice your accuracy on your own or challenge a friend
+                    on the same badminton court.
+                  </p>
+                </div>
 
-        {/* TWO PLAYER PAGE */}
-        {activePage === 'two-player' && (
-          <>
-            <header className="topbar">
-              <div>
-                <p className="eyebrow">SHUTTLELAB ARCADE</p>
-                <h2>2 Player Badminton</h2>
-              </div>
-            </header>
+                <div className="game-selection-grid">
+                  <button
+                    className="game-selection-card"
+                    onClick={() => setGameSelection('one-player')}
+                  >
+                    <div className="game-card-icon">🎯</div>
+                    <span className="game-card-label">SINGLE PLAYER</span>
+                    <h3>Target Challenge</h3>
+                    <p>
+                      Test your shot accuracy. Aim for the target, complete
+                      ten rounds, and build your score.
+                    </p>
+                    <span className="game-card-action">Play 1 Player →</span>
+                  </button>
 
-            <section className="two-player-intro">
-              <h2>Play against a friend.</h2>
-              <p>
-                Player 1 uses WASD. Player 2 uses the arrow keys.
-                Move around your half of the court.
-              </p>
-            </section>
+                  <button
+                    className="game-selection-card"
+                    onClick={() => setGameSelection('two-player')}
+                  >
+                    <div className="game-card-icon">🏸</div>
+                    <span className="game-card-label">LOCAL MULTIPLAYER</span>
+                    <h3>2 Player Badminton</h3>
+                    <p>
+                      Play against a friend on the same court. Move, aim,
+                      and hit using keyboard or mobile controls.
+                    </p>
+                    <span className="game-card-action">Play 2 Player →</span>
+                  </button>
+                </div>
+              </section>
+            )}
 
-            <TwoPlayerGame />
+            {gameSelection === 'one-player' && (
+              <section className="selected-game">
+                <button className="back-to-games" onClick={backToGames}>
+                  ← Back to Games
+                </button>
+                <TargetChallenge />
+              </section>
+            )}
+
+            {gameSelection === 'two-player' && (
+              <section className="selected-game">
+                <button className="back-to-games" onClick={backToGames}>
+                  ← Back to Games
+                </button>
+
+                <section className="two-player-intro">
+                  <h2>Play against a friend.</h2>
+                  <p>
+                    Player 1 uses WASD. Player 2 uses the arrow keys.
+                    Move around your half of the court.
+                  </p>
+                </section>
+
+                <TwoPlayerGame />
+              </section>
+            )}
           </>
         )}
 
@@ -888,4 +950,3 @@ function App() {
 }
 
 export default App
-

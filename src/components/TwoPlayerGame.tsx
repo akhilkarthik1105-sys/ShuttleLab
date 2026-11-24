@@ -6,16 +6,25 @@ import * as THREE from 'three'
 
 import Court from './Court'
 
+type PlayerNumber = 1 | 2
+
 interface PlayerProps {
   color: string
+}
+
+interface GameControls {
+  hit: (player: PlayerNumber) => void
+  newRally: () => void
 }
 
 interface GameCourtProps {
   started: boolean
   matchOver: boolean
-  server: 1 | 2
+  server: PlayerNumber
   onStatusChange: (message: string) => void
-  onPoint: (player: 1 | 2) => void
+  onPoint: (player: PlayerNumber) => void
+  keys: React.MutableRefObject<Record<string, boolean>>
+  controlRef: React.MutableRefObject<GameControls | null>
 }
 
 function Player({ color }: PlayerProps) {
@@ -68,23 +77,22 @@ function GameCourt({
   server,
   onStatusChange,
   onPoint,
+  keys,
+  controlRef,
 }: GameCourtProps) {
   const playerOne = useRef<THREE.Group>(null!)
   const playerTwo = useRef<THREE.Group>(null!)
   const shuttle = useRef<THREE.Group>(null!)
 
-  const keys = useRef<Record<string, boolean>>({})
-
   const shuttleVelocity = useRef(new THREE.Vector3())
   const inFlight = useRef(false)
   const rallyOver = useRef(false)
-  const lastHitBy = useRef<1 | 2 | null>(null)
+  const lastHitBy = useRef<PlayerNumber | null>(null)
 
   const attemptHit = useCallback(
-    (playerNumber: 1 | 2) => {
+    (playerNumber: PlayerNumber) => {
       if (!started || matchOver || rallyOver.current) return
 
-      // A player cannot hit twice in a row.
       if (
         inFlight.current &&
         lastHitBy.current === playerNumber
@@ -92,7 +100,6 @@ function GameCourt({
         return
       }
 
-      // Only the designated player can serve.
       if (!inFlight.current && playerNumber !== server) {
         onStatusChange(`Player ${server} serves this rally!`)
         return
@@ -130,7 +137,6 @@ function GameCourt({
         return
       }
 
-      // Read directional aim keys.
       let aimDirection = 0
 
       if (playerNumber === 1) {
@@ -141,7 +147,6 @@ function GameCourt({
         if (keys.current['o']) aimDirection += 1
       }
 
-      // Choose a landing target inside the opponent's singles court.
       const targetX =
         aimDirection < 0
           ? -1.8
@@ -155,10 +160,8 @@ function GameCourt({
 
       const targetZ = playerNumber === 1 ? -4.8 : 4.8
 
-      // AUTOMATIC SHOT SETTINGS
-      // Higher vertical speed gives the shuttle a higher arc.
+      // Existing automatic shot physics
       const verticalSpeed = 6.5
-
       const groundHeight = 0.16
 
       const height = Math.max(
@@ -175,7 +178,6 @@ function GameCourt({
           )
         ) / 9.81
 
-      // Lower correction reduces horizontal speed.
       const correction = 0.85
 
       const xVelocity =
@@ -199,11 +201,11 @@ function GameCourt({
         `Player ${playerNumber} hit! Get ready for the return.`
       )
     },
-    [started, matchOver, server, onStatusChange]
+    [started, matchOver, server, onStatusChange, keys]
   )
 
   const finishPoint = useCallback(
-    (winner: 1 | 2, message: string) => {
+    (winner: PlayerNumber, message: string) => {
       if (rallyOver.current) return
 
       rallyOver.current = true
@@ -215,6 +217,38 @@ function GameCourt({
     },
     [onPoint, onStatusChange]
   )
+
+  const startNextRally = useCallback(() => {
+    if (!rallyOver.current || matchOver || !started) return
+
+    if (shuttle.current) {
+      shuttle.current.position.set(
+        0,
+        1.4,
+        server === 1 ? 4.2 : -4.2
+      )
+    }
+
+    shuttleVelocity.current.set(0, 0, 0)
+    inFlight.current = false
+    rallyOver.current = false
+    lastHitBy.current = null
+
+    onStatusChange(
+      `New rally! Player ${server} serves.`
+    )
+  }, [server, matchOver, started, onStatusChange])
+
+  useEffect(() => {
+    controlRef.current = {
+      hit: attemptHit,
+      newRally: startNextRally,
+    }
+
+    return () => {
+      controlRef.current = null
+    }
+  }, [attemptHit, startNextRally, controlRef])
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -228,35 +262,13 @@ function GameCourt({
 
       if (!started || matchOver) return
 
-      // One press immediately serves or returns.
       if ((key === 'r' || key === 'm') && !event.repeat) {
-        if (key === 'r') {
-          attemptHit(1)
-        } else {
-          attemptHit(2)
-        }
+        if (key === 'r') attemptHit(1)
+        else attemptHit(2)
       }
 
-      // Space starts the next rally.
-      if (key === ' ' && !event.repeat && rallyOver.current) {
-        if (shuttle.current) {
-          shuttle.current.position.set(
-            0,
-            1.4,
-            server === 1 ? 4.2 : -4.2
-          )
-        }
-
-        shuttleVelocity.current.set(0, 0, 0)
-        inFlight.current = false
-        rallyOver.current = false
-        lastHitBy.current = null
-
-        onStatusChange(
-          `New rally! Player ${server} serves. Press ${
-            server === 1 ? 'R' : 'M'
-          } to serve.`
-        )
+      if (key === ' ' && !event.repeat) {
+        startNextRally()
       }
     }
 
@@ -283,13 +295,19 @@ function GameCourt({
       window.removeEventListener('keyup', handleKeyUp)
       window.removeEventListener('blur', handleBlur)
     }
-  }, [started, matchOver, server, attemptHit, onStatusChange])
+  }, [
+    started,
+    matchOver,
+    keys,
+    attemptHit,
+    startNextRally,
+  ])
 
   useEffect(() => {
     if (!started || matchOver) {
       keys.current = {}
     }
-  }, [started, matchOver])
+  }, [started, matchOver, keys])
 
   useFrame((_, delta) => {
     if (
@@ -304,20 +322,19 @@ function GameCourt({
     const speed = 5 * dt
 
     if (started && !matchOver && !rallyOver.current) {
-      // PLAYER 1: WASD
+      // Player 1 movement
       if (keys.current['w']) playerOne.current.position.z -= speed
       if (keys.current['s']) playerOne.current.position.z += speed
       if (keys.current['a']) playerOne.current.position.x -= speed
       if (keys.current['d']) playerOne.current.position.x += speed
 
-      // PLAYER 2: ARROW KEYS
+      // Player 2 movement
       if (keys.current['arrowup']) playerTwo.current.position.z -= speed
       if (keys.current['arrowdown']) playerTwo.current.position.z += speed
       if (keys.current['arrowleft']) playerTwo.current.position.x -= speed
       if (keys.current['arrowright']) playerTwo.current.position.x += speed
     }
 
-    // Keep players inside their court halves.
     playerOne.current.position.x = THREE.MathUtils.clamp(
       playerOne.current.position.x,
       -2.4,
@@ -342,7 +359,6 @@ function GameCourt({
       -0.6
     )
 
-    // Update the birdie's flight.
     if (started && inFlight.current && !rallyOver.current) {
       shuttleVelocity.current.y -= 9.81 * dt
 
@@ -351,16 +367,14 @@ function GameCourt({
         dt
       )
 
-      // Light air resistance.
       shuttleVelocity.current.multiplyScalar(
         Math.max(0, 1 - 0.04 * dt)
       )
 
-      // Point ends when the birdie reaches the ground.
       if (shuttle.current.position.y <= 0.16) {
         shuttle.current.position.y = 0.16
 
-        const winner: 1 | 2 =
+        const winner: PlayerNumber =
           lastHitBy.current ??
           (shuttle.current.position.z >= 0 ? 2 : 1)
 
@@ -391,6 +405,119 @@ function GameCourt({
   )
 }
 
+// A button that keeps a movement or aim key active while held.
+function HoldButton({
+  label,
+  keyName,
+  keys,
+  className = '',
+}: {
+  label: string
+  keyName: string
+  keys: React.MutableRefObject<Record<string, boolean>>
+  className?: string
+}) {
+  const release = () => {
+    keys.current[keyName] = false
+  }
+
+  return (
+    <button
+      type="button"
+      className={`touch-control ${className}`}
+      onPointerDown={event => {
+        event.preventDefault()
+        keys.current[keyName] = true
+        event.currentTarget.setPointerCapture(event.pointerId)
+      }}
+      onPointerUp={release}
+      onPointerCancel={release}
+      onLostPointerCapture={release}
+      onContextMenu={event => event.preventDefault()}
+    >
+      {label}
+    </button>
+  )
+}
+
+function MobilePlayerControls({
+  player,
+  keys,
+  controlRef,
+  disabled,
+}: {
+  player: PlayerNumber
+  keys: React.MutableRefObject<Record<string, boolean>>
+  controlRef: React.MutableRefObject<GameControls | null>
+  disabled: boolean
+}) {
+  const isOne = player === 1
+
+  const movementKeys = isOne
+    ? { up: 'w', down: 's', left: 'a', right: 'd' }
+    : {
+        up: 'arrowup',
+        down: 'arrowdown',
+        left: 'arrowleft',
+        right: 'arrowright',
+      }
+
+  const aimKeys = isOne
+    ? { left: 'q', right: 'e' }
+    : { left: 'u', right: 'o' }
+
+  return (
+    <div className={`mobile-player-controls player-${player}`}>
+      <div className="mobile-control-heading">
+        <span>{`PLAYER ${player}`}</span>
+        <span>{isOne ? 'GREEN' : 'BLUE'}</span>
+      </div>
+
+      <div className="mobile-control-content">
+        <div className="mobile-dpad">
+          <div />
+          <HoldButton label="▲" keyName={movementKeys.up} keys={keys} />
+          <div />
+
+          <HoldButton label="◀" keyName={movementKeys.left} keys={keys} />
+          <div className="dpad-center">MOVE</div>
+          <HoldButton label="▶" keyName={movementKeys.right} keys={keys} />
+
+          <div />
+          <HoldButton label="▼" keyName={movementKeys.down} keys={keys} />
+          <div />
+        </div>
+
+        <div className="mobile-action-controls">
+          <div className="mobile-aim-row">
+            <HoldButton
+              label="AIM ◀"
+              keyName={aimKeys.left}
+              keys={keys}
+              className="aim-button"
+            />
+            <HoldButton
+              label="AIM ▶"
+              keyName={aimKeys.right}
+              keys={keys}
+              className="aim-button"
+            />
+          </div>
+
+          <button
+            type="button"
+            className="mobile-hit-button"
+            disabled={disabled}
+            onClick={() => controlRef.current?.hit(player)}
+          >
+            HIT
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function TwoPlayerGame() {
   const [started, setStarted] = useState(false)
   const [matchOver, setMatchOver] = useState(false)
@@ -404,15 +531,17 @@ export default function TwoPlayerGame() {
     playerTwo: 0,
   })
 
-  const [server, setServer] = useState<1 | 2>(1)
+  const [server, setServer] = useState<PlayerNumber>(1)
+  const [matchWinner, setMatchWinner] = useState<PlayerNumber | null>(null)
 
-  const [matchWinner, setMatchWinner] = useState<1 | 2 | null>(null)
+  const keys = useRef<Record<string, boolean>>({})
+  const controlRef = useRef<GameControls | null>(null)
 
   const handleStatusChange = useCallback((message: string) => {
     setStatus(message)
   }, [])
 
-  const handlePoint = useCallback((winner: 1 | 2) => {
+  const handlePoint = useCallback((winner: PlayerNumber) => {
     setServer(winner)
 
     setScores(previous => ({
@@ -426,7 +555,7 @@ export default function TwoPlayerGame() {
     const difference = Math.abs(scores.playerOne - scores.playerTwo)
 
     if (highest >= 11 && difference >= 2 && !matchOver) {
-      const winningPlayer: 1 | 2 =
+      const winningPlayer: PlayerNumber =
         scores.playerOne > scores.playerTwo ? 1 : 2
 
       setMatchWinner(winningPlayer)
@@ -436,6 +565,7 @@ export default function TwoPlayerGame() {
   }, [scores, matchOver])
 
   const resetMatch = () => {
+    keys.current = {}
     setScores({ playerOne: 0, playerTwo: 0 })
     setServer(1)
     setMatchWinner(null)
@@ -444,28 +574,287 @@ export default function TwoPlayerGame() {
     setStatus('Welcome! Read the rules to begin.')
   }
 
+  const startGame = () => {
+    keys.current = {}
+    setScores({ playerOne: 0, playerTwo: 0 })
+    setServer(1)
+    setMatchWinner(null)
+    setMatchOver(false)
+    setStarted(true)
+    setStatus('Player 1 serves! Move close and tap HIT.')
+  }
+
+  const disabledControls = !started || matchOver
+
   return (
-    <div
-      style={{
-        width: '100%',
-        minHeight: '650px',
-        position: 'relative',
-        display: 'flex',
-        gap: '14px',
-        alignItems: 'stretch',
-      }}
-    >
-      <div
-        style={{
-          flex: 1,
-          minWidth: 0,
-          height: '650px',
-          position: 'relative',
-          borderRadius: '14px',
-          overflow: 'hidden',
-          background: '#071426',
-        }}
-      >
+    <div className="two-player-layout">
+      <style>{`
+        .two-player-layout {
+          width: 100%;
+          min-height: 650px;
+          position: relative;
+          display: flex;
+          gap: 14px;
+          align-items: stretch;
+          color: white;
+        }
+
+        .game-court-panel {
+          flex: 1;
+          min-width: 0;
+          height: 650px;
+          position: relative;
+          border-radius: 14px;
+          overflow: hidden;
+          background: #071426;
+        }
+
+        .game-scoreboard {
+          width: 175px;
+          flex-shrink: 0;
+          border-radius: 14px;
+          padding: 18px 14px;
+          background: #0d1b2d;
+          color: white;
+          display: flex;
+          flex-direction: column;
+          gap: 16px;
+        }
+
+        .mobile-controls {
+          display: none;
+        }
+
+        .touch-control {
+          border: 1px solid rgba(255,255,255,0.16);
+          border-radius: 9px;
+          background: #263b55;
+          color: white;
+          font-weight: 800;
+          font-size: 18px;
+          min-width: 42px;
+          min-height: 42px;
+          padding: 8px;
+          touch-action: none;
+          user-select: none;
+          -webkit-user-select: none;
+          -webkit-tap-highlight-color: transparent;
+        }
+
+        .touch-control:active {
+          background: #45617f;
+        }
+
+        .mobile-player-controls {
+          flex: 1;
+          min-width: 0;
+          border-radius: 12px;
+          padding: 10px;
+          background: #0d1b2d;
+          border: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .mobile-control-heading {
+          display: flex;
+          justify-content: space-between;
+          gap: 8px;
+          font-size: 12px;
+          font-weight: 800;
+          margin-bottom: 10px;
+        }
+
+        .player-1 .mobile-control-heading {
+          color: #22c55e;
+        }
+
+        .player-2 .mobile-control-heading {
+          color: #60a5fa;
+        }
+
+        .mobile-control-content {
+          display: flex;
+          align-items: center;
+          justify-content: space-around;
+          gap: 8px;
+        }
+
+        .mobile-dpad {
+          display: grid;
+          grid-template-columns: repeat(3, 42px);
+          grid-template-rows: repeat(3, 42px);
+          gap: 3px;
+          justify-content: center;
+          align-items: center;
+        }
+
+        .dpad-center {
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          color: #aab8ca;
+          font-size: 9px;
+          font-weight: 800;
+        }
+
+        .mobile-action-controls {
+          display: flex;
+          flex: 1;
+          min-width: 0;
+          flex-direction: column;
+          gap: 9px;
+        }
+
+        .mobile-aim-row {
+          display: flex;
+          gap: 5px;
+        }
+
+        .aim-button {
+          flex: 1;
+          font-size: 11px;
+          min-width: 0;
+          padding: 7px 3px;
+        }
+
+        .mobile-hit-button {
+          width: 100%;
+          min-height: 48px;
+          border: none;
+          border-radius: 9px;
+          color: #061426;
+          font-size: 16px;
+          font-weight: 900;
+          background: #facc15;
+          touch-action: manipulation;
+        }
+
+        .mobile-hit-button:disabled {
+          opacity: 0.4;
+        }
+
+        .mobile-hit-button:active {
+          filter: brightness(0.85);
+        }
+
+        .mobile-next-rally {
+          display: none;
+        }
+
+        @media (max-width: 700px) {
+          .two-player-layout {
+            flex-direction: column;
+            gap: 10px;
+            min-height: 0;
+          }
+
+          .game-court-panel {
+            flex: none;
+            width: 100%;
+            height: 58vh;
+            min-height: 360px;
+            max-height: 540px;
+            border-radius: 12px;
+          }
+
+          .game-scoreboard {
+            box-sizing: border-box;
+            width: 100%;
+            padding: 10px;
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 8px;
+            align-items: center;
+          }
+
+          .game-scoreboard h3 {
+            grid-column: 1 / -1;
+            font-size: 13px;
+          }
+
+          .game-scoreboard .score-card {
+            padding: 8px 4px !important;
+          }
+
+          .game-scoreboard .score-number {
+            font-size: 27px !important;
+          }
+
+          .game-scoreboard .server-card {
+            padding: 8px 4px !important;
+          }
+
+          .game-scoreboard .match-info {
+            grid-column: 1 / 2;
+            font-size: 10px;
+          }
+
+          .game-scoreboard .reset-button {
+            grid-column: 2 / 4;
+          }
+
+          .mobile-controls {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            width: 100%;
+          }
+
+          .mobile-control-panels {
+            display: flex;
+            gap: 8px;
+            width: 100%;
+          }
+
+          .mobile-next-rally {
+            display: block;
+            width: 100%;
+            min-height: 44px;
+            border: none;
+            border-radius: 9px;
+            background: #22c55e;
+            color: #052e16;
+            font-weight: 900;
+            font-size: 14px;
+          }
+
+          .mobile-next-rally:disabled {
+            opacity: 0.4;
+          }
+
+          .desktop-instructions {
+            display: none !important;
+          }
+        }
+
+        @media (max-width: 390px) {
+          .mobile-player-controls {
+            padding: 7px 5px;
+          }
+
+          .mobile-dpad {
+            grid-template-columns: repeat(3, 35px);
+            grid-template-rows: repeat(3, 38px);
+          }
+
+          .touch-control {
+            min-width: 35px;
+            min-height: 38px;
+            font-size: 15px;
+            padding: 5px;
+          }
+
+          .aim-button {
+            font-size: 9px;
+          }
+
+          .mobile-hit-button {
+            min-height: 43px;
+            font-size: 14px;
+          }
+        }
+      `}</style>
+
+      <div className="game-court-panel">
         <Canvas
           camera={{
             position: [0, 15, 0],
@@ -483,6 +872,8 @@ export default function TwoPlayerGame() {
             server={server}
             onStatusChange={handleStatusChange}
             onPoint={handlePoint}
+            keys={keys}
+            controlRef={controlRef}
           />
 
           <OrbitControls
@@ -514,6 +905,7 @@ export default function TwoPlayerGame() {
         </div>
 
         <div
+          className="desktop-instructions"
           style={{
             position: 'absolute',
             bottom: 12,
@@ -534,25 +926,13 @@ export default function TwoPlayerGame() {
         </div>
       </div>
 
-      {/* SCOREBOARD */}
-      <div
-        style={{
-          width: '175px',
-          flexShrink: 0,
-          borderRadius: '14px',
-          padding: '18px 14px',
-          background: '#0d1b2d',
-          color: 'white',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '16px',
-        }}
-      >
+      <div className="game-scoreboard">
         <h3 style={{ margin: 0, textAlign: 'center' }}>
           SCOREBOARD
         </h3>
 
         <div
+          className="score-card"
           style={{
             padding: '14px 10px',
             borderRadius: '10px',
@@ -563,12 +943,13 @@ export default function TwoPlayerGame() {
           <div style={{ color: '#22c55e', fontWeight: 700 }}>
             PLAYER 1
           </div>
-          <div style={{ fontSize: '38px', fontWeight: 800 }}>
+          <div className="score-number" style={{ fontSize: '38px', fontWeight: 800 }}>
             {scores.playerOne}
           </div>
         </div>
 
         <div
+          className="score-card"
           style={{
             padding: '14px 10px',
             borderRadius: '10px',
@@ -579,12 +960,13 @@ export default function TwoPlayerGame() {
           <div style={{ color: '#60a5fa', fontWeight: 700 }}>
             PLAYER 2
           </div>
-          <div style={{ fontSize: '38px', fontWeight: 800 }}>
+          <div className="score-number" style={{ fontSize: '38px', fontWeight: 800 }}>
             {scores.playerTwo}
           </div>
         </div>
 
         <div
+          className="server-card"
           style={{
             padding: '12px 8px',
             borderRadius: '10px',
@@ -607,6 +989,7 @@ export default function TwoPlayerGame() {
         </div>
 
         <div
+          className="match-info"
           style={{
             marginTop: 'auto',
             fontSize: '12px',
@@ -621,6 +1004,7 @@ export default function TwoPlayerGame() {
         </div>
 
         <button
+          className="reset-button"
           onClick={resetMatch}
           style={{
             border: 'none',
@@ -633,6 +1017,34 @@ export default function TwoPlayerGame() {
           }}
         >
           Reset Match
+        </button>
+      </div>
+
+      {/* TOUCHSCREEN CONTROLS */}
+      <div className="mobile-controls">
+        <div className="mobile-control-panels">
+          <MobilePlayerControls
+            player={1}
+            keys={keys}
+            controlRef={controlRef}
+            disabled={disabledControls}
+          />
+
+          <MobilePlayerControls
+            player={2}
+            keys={keys}
+            controlRef={controlRef}
+            disabled={disabledControls}
+          />
+        </div>
+
+        <button
+          type="button"
+          className="mobile-next-rally"
+          disabled={!started || matchOver}
+          onClick={() => controlRef.current?.newRally()}
+        >
+          START NEXT RALLY
         </button>
       </div>
 
@@ -673,18 +1085,14 @@ export default function TwoPlayerGame() {
 
             <h3>Player 1 — Green</h3>
             <ul>
-              <li>WASD: Move</li>
-              <li>Tap R: Serve or return</li>
-              <li>Hold Q while tapping R: Aim left</li>
-              <li>Hold E while tapping R: Aim right</li>
+              <li>Desktop: WASD to move, R to hit, Q/E to aim.</li>
+              <li>Phone: Use the left touchscreen control panel.</li>
             </ul>
 
             <h3>Player 2 — Blue</h3>
             <ul>
-              <li>Arrow keys: Move</li>
-              <li>Tap M: Serve or return</li>
-              <li>Hold U while tapping M: Aim left</li>
-              <li>Hold O while tapping M: Aim right</li>
+              <li>Desktop: Arrow keys to move, M to hit, U/O to aim.</li>
+              <li>Phone: Use the right touchscreen control panel.</li>
             </ul>
 
             <h3>Rules</h3>
@@ -695,20 +1103,13 @@ export default function TwoPlayerGame() {
               <li>Every hit uses automatic power and height.</li>
               <li>Shots automatically target the opponent's singles court.</li>
               <li>A point is awarded when the shuttle lands before the opponent returns it.</li>
-              <li>There are no intentional OUT shots in this game mode.</li>
-              <li>Press SPACE after each point to start the next rally.</li>
+              <li>On a phone, tap START NEXT RALLY after each point.</li>
+              <li>On a computer, press SPACE after each point.</li>
               <li>Win by 2 points after reaching 11.</li>
             </ul>
 
             <button
-              onClick={() => {
-                setScores({ playerOne: 0, playerTwo: 0 })
-                setServer(1)
-                setMatchWinner(null)
-                setMatchOver(false)
-                setStarted(true)
-                setStatus('Player 1 serves! Move close and tap R.')
-              }}
+              onClick={startGame}
               style={{
                 width: '100%',
                 border: 'none',
@@ -760,9 +1161,7 @@ export default function TwoPlayerGame() {
               Player {matchWinner} Wins!
             </h1>
 
-            <p style={{ color: '#cbd5e1' }}>
-              Final Score
-            </p>
+            <p style={{ color: '#cbd5e1' }}>Final Score</p>
 
             <div
               style={{

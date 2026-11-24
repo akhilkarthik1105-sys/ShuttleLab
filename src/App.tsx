@@ -1,7 +1,9 @@
+
 import { useState, useMemo, useEffect } from 'react'
 import FlightSimulator from './components/FlightSimulator'
 import ShotPresetViewer from './components/ShotPresetViewer'
 import TargetChallenge from './components/TargetChallenge'
+import TwoPlayerGame from './components/TwoPlayerGame'
 import './App.css'
 import { Canvas, useThree } from '@react-three/fiber'
 import { OrbitControls } from '@react-three/drei'
@@ -24,7 +26,7 @@ import {
   ResponsiveContainer,
 } from 'recharts'
 
-type Page = 'home' | 'simulation' | 'shot-presets' | 'games'
+type Page = 'home' | 'simulation' | 'shot-presets' | 'games' | 'two-player'
 type ShotCategory = 'overhead' | 'net' | 'flat'
 type ShotDirection = 'straight' | 'crosscourt'
 type CameraView = 'side' | 'overhead' | 'player'
@@ -42,73 +44,63 @@ const shotPresets: ShotPresetData[] = [
     id: 'clear',
     name: 'Clear',
     category: 'overhead',
-    description:
-      'A high, deep shot intended to push your opponent toward the backcourt.',
+    description: 'A high, deep shot intended to push your opponent toward the backcourt.',
   },
   {
     id: 'smash',
     name: 'Smash',
     category: 'overhead',
-    description:
-      'A steep attacking shot aimed down into the opponent’s court.',
+    description: 'A steep attacking shot aimed down into the opponent’s court.',
   },
   {
     id: 'drop',
     name: 'Drop',
     category: 'overhead',
-    description:
-      'A controlled overhead shot that travels into the frontcourt.',
+    description: 'A controlled overhead shot that travels into the frontcourt.',
   },
   {
     id: 'slice-drop',
     name: 'Slice Drop',
     category: 'overhead',
-    description:
-      'A disguised drop shot intended to change the shuttle’s direction and pace.',
+    description: 'A disguised drop shot intended to change the shuttle’s direction and pace.',
     note: 'The slicing action and shuttle spin are not represented in this visual.',
   },
   {
     id: 'net-drop',
     name: 'Net Drop',
     category: 'net',
-    description:
-      'A soft shot played close to the net, designed to make the opponent move forward.',
+    description: 'A soft shot played close to the net, designed to make the opponent move forward.',
   },
   {
     id: 'net-kill',
     name: 'Net Kill',
     category: 'net',
-    description:
-      'A quick downward attacking shot used when the shuttle is high enough near the net.',
+    description: 'A quick downward attacking shot used when the shuttle is high enough near the net.',
   },
   {
     id: 'net-lift',
     name: 'Net Lift',
     category: 'net',
-    description:
-      'A defensive shot that sends the shuttle high and deep toward the opponent’s backcourt.',
+    description: 'A defensive shot that sends the shuttle high and deep toward the opponent’s backcourt.',
   },
   {
     id: 'spinning-net',
     name: 'Spinning Net',
     category: 'net',
-    description:
-      'A delicate net shot intended to tumble close to the net on the opponent’s side.',
+    description: 'A delicate net shot intended to tumble close to the net on the opponent’s side.',
     note: 'The tumbling motion and spin are not represented in this visual.',
   },
   {
     id: 'drive',
     name: 'Drive',
     category: 'flat',
-    description:
-      'A fast, relatively flat shot that travels through the middle or side of the court.',
+    description: 'A fast, relatively flat shot that travels through the middle or side of the court.',
   },
   {
     id: 'defensive-block',
     name: 'Defensive Block',
     category: 'flat',
-    description:
-      'A controlled response that redirects an attacking shot into the opponent’s court.',
+    description: 'A controlled response that redirects an attacking shot into the opponent’s court.',
   },
 ]
 
@@ -118,16 +110,11 @@ const categoryLabels: Record<ShotCategory, string> = {
   flat: 'Flat / Defensive',
 }
 
-// SIMULATION CAMERA CONTROLLER
-
 function SimulationCamera({ view }: { view: CameraView }) {
   const { camera } = useThree()
 
   useEffect(() => {
-    const cameraPositions: Record<
-      CameraView,
-      [number, number, number]
-    > = {
+    const cameraPositions: Record<CameraView, [number, number, number]> = {
       side: [13, 5, 0],
       overhead: [0, 18, 0.001],
       player: [0, 5, 13],
@@ -135,18 +122,8 @@ function SimulationCamera({ view }: { view: CameraView }) {
 
     const position = cameraPositions[view]
 
-    camera.position.set(
-      position[0],
-      position[1],
-      position[2]
-    )
-
-    camera.up.set(
-      0,
-      1,
-      view === 'overhead' ? -1 : 0
-    )
-
+    camera.position.set(position[0], position[1], position[2])
+    camera.up.set(0, 1, view === 'overhead' ? -1 : 0)
     camera.lookAt(0, 1, 0)
     camera.updateProjectionMatrix()
     camera.updateMatrixWorld()
@@ -170,25 +147,16 @@ function App() {
   const [driftAmount, setDriftAmount] = useState(0)
   const [driftDirection, setDriftDirection] = useState(0)
 
-  // Camera selection
-  const [cameraView, setCameraView] =
-    useState<CameraView>('player')
+  const [cameraView, setCameraView] = useState<CameraView>('player')
 
   // Shot preset controls
-  const [selectedCategory, setSelectedCategory] =
-    useState<ShotCategory>('overhead')
-
+  const [selectedCategory, setSelectedCategory] = useState<ShotCategory>('overhead')
   const [selectedShotId, setSelectedShotId] = useState('clear')
+  const [selectedDirection, setSelectedDirection] = useState<ShotDirection>('straight')
 
-  const [selectedDirection, setSelectedDirection] =
-    useState<ShotDirection>('straight')
-
-  // Existing physics simulation
   const initialState: PhysicsState = useMemo(() => {
     const verticalRadians = (launchAngle * Math.PI) / 180
-    const horizontalRadians =
-      (horizontalDirection * Math.PI) / 180
-
+    const horizontalRadians = (horizontalDirection * Math.PI) / 180
     const horizontalSpeed = speed * Math.cos(verticalRadians)
 
     return {
@@ -200,7 +168,7 @@ function App() {
       velocity: {
         x: horizontalSpeed * Math.sin(horizontalRadians),
         y: speed * Math.sin(verticalRadians),
-        z: -horizontalSpeed * Math.cos(verticalRadians),
+        z: -horizontalSpeed * Math.cos(horizontalRadians),
       },
     }
   }, [
@@ -239,9 +207,7 @@ function App() {
       0.3
     )
 
-    if (trajectory.length === 0) {
-      return null
-    }
+    if (trajectory.length === 0) return null
 
     const finalPoint = trajectory[trajectory.length - 1]
 
@@ -301,7 +267,6 @@ function App() {
           ? 'High launch angle'
           : 'Moderate launch angle'
 
-  // Shot preset selection
   const visibleShots = shotPresets.filter(
     shot => shot.category === selectedCategory
   )
@@ -342,6 +307,13 @@ function App() {
             onClick={() => setActivePage('games')}
           >
             Games
+          </button>
+
+          <button
+            className={activePage === 'two-player' ? 'active' : ''}
+            onClick={() => setActivePage('two-player')}
+          >
+            2 Player
           </button>
         </nav>
 
@@ -429,142 +401,100 @@ function App() {
                   <div className="stat-card">
                     <h3>Launch Position</h3>
 
-                    <label>
-                      Left / Right: {positionX.toFixed(1)} m
-                    </label>
+                    <label>Left / Right: {positionX.toFixed(1)} m</label>
                     <input
                       type="range"
                       min="-2.5"
                       max="2.5"
                       step="0.1"
                       value={positionX}
-                      onChange={event =>
-                        setPositionX(Number(event.target.value))
-                      }
+                      onChange={event => setPositionX(Number(event.target.value))}
                     />
 
-                    <label>
-                      Distance from Net: {positionZ.toFixed(1)} m
-                    </label>
+                    <label>Distance from Net: {positionZ.toFixed(1)} m</label>
                     <input
                       type="range"
                       min="0.5"
                       max="6.0"
                       step="0.1"
                       value={positionZ}
-                      onChange={event =>
-                        setPositionZ(Number(event.target.value))
-                      }
+                      onChange={event => setPositionZ(Number(event.target.value))}
                     />
 
-                    <label>
-                      Launch Height: {launchHeight.toFixed(1)} m
-                    </label>
+                    <label>Launch Height: {launchHeight.toFixed(1)} m</label>
                     <input
                       type="range"
                       min="0.5"
                       max="3.5"
                       step="0.1"
                       value={launchHeight}
-                      onChange={event =>
-                        setLaunchHeight(Number(event.target.value))
-                      }
+                      onChange={event => setLaunchHeight(Number(event.target.value))}
                     />
                   </div>
 
                   <div className="stat-card">
                     <h3>Shot Conditions</h3>
 
-                    <label>
-                      Launch Speed: {speed} m/s
-                    </label>
+                    <label>Launch Speed: {speed} m/s</label>
                     <input
                       type="range"
                       min="5"
                       max="100"
                       step="1"
                       value={speed}
-                      onChange={event =>
-                        setSpeed(Number(event.target.value))
-                      }
+                      onChange={event => setSpeed(Number(event.target.value))}
                     />
 
-                    <label>
-                      Vertical Launch Angle: {launchAngle}°
-                    </label>
+                    <label>Vertical Launch Angle: {launchAngle}°</label>
                     <input
                       type="range"
                       min="-30"
                       max="80"
                       step="1"
                       value={launchAngle}
-                      onChange={event =>
-                        setLaunchAngle(Number(event.target.value))
-                      }
+                      onChange={event => setLaunchAngle(Number(event.target.value))}
                     />
 
-                    <p className="shot-description">
-                      {shotDescription}
-                    </p>
+                    <p className="shot-description">{shotDescription}</p>
 
-                    <label>
-                      Horizontal Launch Direction: {horizontalDirection}°
-                    </label>
+                    <label>Horizontal Launch Direction: {horizontalDirection}°</label>
                     <input
                       type="range"
                       min="-45"
                       max="45"
                       step="1"
                       value={horizontalDirection}
-                      onChange={event =>
-                        setHorizontalDirection(Number(event.target.value))
-                      }
+                      onChange={event => setHorizontalDirection(Number(event.target.value))}
                     />
 
-                    <p className="shot-description">
-                      {horizontalDescription}
-                    </p>
+                    <p className="shot-description">{horizontalDescription}</p>
                   </div>
 
                   <div className="stat-card">
                     <h3>Indoor Drift</h3>
+                    <p>Simulate air currents inside the badminton hall.</p>
 
-                    <p>
-                      Simulate air currents inside the badminton hall.
-                    </p>
-
-                    <label>
-                      Drift Amount: {driftAmount.toFixed(2)} m/s
-                    </label>
+                    <label>Drift Amount: {driftAmount.toFixed(2)} m/s</label>
                     <input
                       type="range"
                       min="0"
                       max="0.5"
                       step="0.01"
                       value={driftAmount}
-                      onChange={event =>
-                        setDriftAmount(Number(event.target.value))
-                      }
+                      onChange={event => setDriftAmount(Number(event.target.value))}
                     />
 
-                    <label>
-                      Drift Direction: {driftDirection}°
-                    </label>
+                    <label>Drift Direction: {driftDirection}°</label>
                     <input
                       type="range"
                       min="0"
                       max="360"
                       step="1"
                       value={driftDirection}
-                      onChange={event =>
-                        setDriftDirection(Number(event.target.value))
-                      }
+                      onChange={event => setDriftDirection(Number(event.target.value))}
                     />
 
-                    <p className="shot-description">
-                      {driftDirectionDescription}
-                    </p>
-
+                    <p className="shot-description">{driftDirectionDescription}</p>
                     <p className="shot-description">
                       {driftAmount === 0
                         ? 'Drift is currently disabled'
@@ -574,37 +504,29 @@ function App() {
                 </div>
 
                 <div className="simulation-visuals">
-                  {/* CAMERA BUTTONS */}
                   <div className="camera-view-controls">
                     <button
-                      className={
-                        cameraView === 'side' ? 'selected' : ''
-                      }
+                      className={cameraView === 'side' ? 'selected' : ''}
                       onClick={() => setCameraView('side')}
                     >
                       Side View
                     </button>
 
                     <button
-                      className={
-                        cameraView === 'overhead' ? 'selected' : ''
-                      }
+                      className={cameraView === 'overhead' ? 'selected' : ''}
                       onClick={() => setCameraView('overhead')}
                     >
                       Overhead View
                     </button>
 
                     <button
-                      className={
-                        cameraView === 'player' ? 'selected' : ''
-                      }
+                      className={cameraView === 'player' ? 'selected' : ''}
                       onClick={() => setCameraView('player')}
                     >
                       Player View
                     </button>
                   </div>
 
-                  {/* 3D COURT */}
                   <div className="court-placeholder">
                     <Canvas
                       shadows
@@ -661,23 +583,17 @@ function App() {
                       <div className="flight-results-grid">
                         <div className="result-card">
                           <span>FLIGHT TIME</span>
-                          <strong>
-                            {flightResults.flightTime.toFixed(2)} s
-                          </strong>
+                          <strong>{flightResults.flightTime.toFixed(2)} s</strong>
                         </div>
 
                         <div className="result-card">
                           <span>MAXIMUM HEIGHT</span>
-                          <strong>
-                            {flightResults.maximumHeight.toFixed(2)} m
-                          </strong>
+                          <strong>{flightResults.maximumHeight.toFixed(2)} m</strong>
                         </div>
 
                         <div className="result-card">
                           <span>HORIZONTAL DISTANCE</span>
-                          <strong>
-                            {flightResults.horizontalDistance.toFixed(2)} m
-                          </strong>
+                          <strong>{flightResults.horizontalDistance.toFixed(2)} m</strong>
                         </div>
 
                         <div className="result-card">
@@ -690,16 +606,12 @@ function App() {
 
                         <div className="result-card">
                           <span>INITIAL SPEED</span>
-                          <strong>
-                            {flightResults.initialSpeed.toFixed(2)} m/s
-                          </strong>
+                          <strong>{flightResults.initialSpeed.toFixed(2)} m/s</strong>
                         </div>
 
                         <div className="result-card">
                           <span>SPEED AT LANDING</span>
-                          <strong>
-                            {flightResults.finalSpeed.toFixed(2)} m/s
-                          </strong>
+                          <strong>{flightResults.finalSpeed.toFixed(2)} m/s</strong>
                         </div>
                       </div>
 
@@ -769,7 +681,7 @@ function App() {
                                   color: '#fff',
                                 }}
                                 labelStyle={{ color: '#94a3b8' }}
-                                formatter={(value) => [
+                                formatter={value => [
                                   `${Number(value).toFixed(2)} m/s`,
                                   'Speed',
                                 ]}
@@ -794,8 +706,7 @@ function App() {
                         <p className="results-note">
                           Each point represents the calculated speed at a
                           point in the simulated trajectory. The graph
-                          updates automatically when the shot conditions
-                          change.
+                          updates automatically when the shot conditions change.
                         </p>
                       </section>
                     </>
@@ -825,6 +736,28 @@ function App() {
             </header>
 
             <TargetChallenge />
+          </>
+        )}
+
+        {/* TWO PLAYER PAGE */}
+        {activePage === 'two-player' && (
+          <>
+            <header className="topbar">
+              <div>
+                <p className="eyebrow">SHUTTLELAB ARCADE</p>
+                <h2>2 Player Badminton</h2>
+              </div>
+            </header>
+
+            <section className="two-player-intro">
+              <h2>Play against a friend.</h2>
+              <p>
+                Player 1 uses WASD. Player 2 uses the arrow keys.
+                Move around your half of the court.
+              </p>
+            </section>
+
+            <TwoPlayerGame />
           </>
         )}
 
@@ -858,9 +791,7 @@ function App() {
                       category => (
                         <button
                           key={category}
-                          className={
-                            selectedCategory === category ? 'selected' : ''
-                          }
+                          className={selectedCategory === category ? 'selected' : ''}
                           onClick={() => {
                             setSelectedCategory(category)
 
@@ -868,9 +799,7 @@ function App() {
                               shot => shot.category === category
                             )
 
-                            if (firstShot) {
-                              setSelectedShotId(firstShot.id)
-                            }
+                            if (firstShot) setSelectedShotId(firstShot.id)
                           }}
                         >
                           {categoryLabels[category]}
@@ -901,18 +830,14 @@ function App() {
 
                     <div>
                       <button
-                        className={
-                          selectedDirection === 'straight' ? 'selected' : ''
-                        }
+                        className={selectedDirection === 'straight' ? 'selected' : ''}
                         onClick={() => setSelectedDirection('straight')}
                       >
                         Straight
                       </button>
 
                       <button
-                        className={
-                          selectedDirection === 'crosscourt' ? 'selected' : ''
-                        }
+                        className={selectedDirection === 'crosscourt' ? 'selected' : ''}
                         onClick={() => setSelectedDirection('crosscourt')}
                       >
                         Crosscourt
@@ -963,3 +888,4 @@ function App() {
 }
 
 export default App
+

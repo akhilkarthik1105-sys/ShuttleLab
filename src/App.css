@@ -1495,3 +1495,127 @@ body,
     font-size: 38px;
   }
 }
+
+/* =========================================
+   TWO PLAYER BADMINTON GAME
+========================================= */
+
+.two-player-intro {
+  background: #111827;
+  border: 1px solid #263449;
+  border-radius: 12px;
+  padding: 20px 24px;
+  margin-bottom: 18px;
+}
+
+.two-player-intro h2 {
+  color: #ffffff;
+  font-size: 20px;
+  margin: 0 0 8px;
+}
+
+.two-player-intro p {
+  color: #94a3b8;
+  font-size: 13px;
+  line-height: 1.6;
+  margin: 0;
+}
+
+/* Game component wrapper */
+.two-player-game {
+  width: 100%;
+  min-width: 0;
+  background: #111827;
+  border: 1px solid #263449;
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+/* Canvas wrapper */
+.two-player-game-canvas {
+  width: 100%;
+  height: 650px;
+  position: relative;
+  background: #0b1120;
+}
+
+.two-player-game-canvas canvas {
+  display: block;
+}
+
+/* Keyboard controls */
+.two-player-key-guide {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  padding: 18px;
+  background: #111827;
+  border-top: 1px solid #263449;
+}
+
+.two-player-key-card {
+  padding: 16px;
+  background: #0f172a;
+  border: 1px solid #263449;
+  border-radius: 10px;
+}
+
+.two-player-key-card h3 {
+  color: #ffffff;
+  font-size: 14px;
+  margin: 0 0 10px;
+}
+
+.two-player-key-card p {
+  color: #94a3b8;
+  font-size: 12px;
+  line-height: 1.6;
+  margin: 0;
+}
+
+.two-player-key {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 30px;
+  min-height: 30px;
+  margin: 3px;
+  padding: 5px 9px;
+  color: #e2e8f0;
+  background: #263449;
+  border: 1px solid #475569;
+  border-radius: 6px;
+  font-weight: 700;
+  font-size: 12px;
+}
+
+@media (max-width: 800px) {
+  .page-tabs {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+
+  .page-tabs button {
+    padding: 10px 3px;
+    font-size: 11px;
+  }
+
+  .two-player-game-canvas {
+    height: 520px;
+  }
+}
+
+@media (max-width: 600px) {
+  .two-player-intro {
+    padding: 16px;
+  }
+
+  .two-player-key-guide {
+    grid-template-columns: 1fr;
+    padding: 12px;
+  }
+
+  .two-player-game-canvas {
+    height: 440px;
+  }
+}
+

@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect } from 'react'
 import FlightSimulator from './components/FlightSimulator'
 import ShotPresetViewer from './components/ShotPresetViewer'
+import TargetChallenge from './components/TargetChallenge'
 import './App.css'
 import { Canvas, useThree } from '@react-three/fiber'
 import { OrbitControls } from '@react-three/drei'
@@ -23,7 +24,7 @@ import {
   ResponsiveContainer,
 } from 'recharts'
 
-type Page = 'home' | 'simulation' | 'shot-presets'
+type Page = 'home' | 'simulation' | 'shot-presets' | 'games'
 type ShotCategory = 'overhead' | 'net' | 'flat'
 type ShotDirection = 'straight' | 'crosscourt'
 type CameraView = 'side' | 'overhead' | 'player'
@@ -199,7 +200,7 @@ function App() {
       velocity: {
         x: horizontalSpeed * Math.sin(horizontalRadians),
         y: speed * Math.sin(verticalRadians),
-        z: -horizontalSpeed * Math.cos(horizontalRadians),
+        z: -horizontalSpeed * Math.cos(verticalRadians),
       },
     }
   }, [
@@ -334,6 +335,13 @@ function App() {
             onClick={() => setActivePage('shot-presets')}
           >
             Shot Presets
+          </button>
+
+          <button
+            className={activePage === 'games' ? 'active' : ''}
+            onClick={() => setActivePage('games')}
+          >
+            Games
           </button>
         </nav>
 
@@ -803,6 +811,20 @@ function App() {
                 </section>
               </div>
             </section>
+          </>
+        )}
+
+        {/* GAMES PAGE */}
+        {activePage === 'games' && (
+          <>
+            <header className="topbar">
+              <div>
+                <p className="eyebrow">SHUTTLELAB ARCADE</p>
+                <h2>Games</h2>
+              </div>
+            </header>
+
+            <TargetChallenge />
           </>
         )}
 

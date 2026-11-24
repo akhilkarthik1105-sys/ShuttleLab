@@ -12,6 +12,10 @@ import { simulateTrajectory } from '../physics/simulation'
 
 const MPH_TO_MS = 0.44704
 const TOTAL_ROUNDS = 10
+const NET_HEIGHT = 1.524
+
+const SINGLES_HALF_WIDTH = 2.59
+const OPPONENT_BASELINE = -6.7
 
 interface Target {
   x: number
@@ -23,20 +27,33 @@ interface LandingResult {
   z: number
   distance: number
   points: number
+  basePoints: number
+  wideBonus: number
+  reason: string | null
 }
 
 function createTarget(): Target {
   return {
-    x: Number((Math.random() * 3.8 - 1.9).toFixed(2)),
-    z: Number((-2.6 - Math.random() * 3.5).toFixed(2)),
+    x: Number((Math.random() * 4 - 2).toFixed(2)),
+    z: Number((-0.8 - Math.random() * 5.2).toFixed(2)),
   }
 }
 
-function calculateScore(distance: number): number {
-  if (distance <= 0.35) return 100
-  if (distance <= 0.75) return 75
-  if (distance <= 1.5) return 40
-  if (distance <= 2.5) return 10
+function calculateAccuracyScore(distance: number): number {
+  if (distance <= 0.65) return 100
+  if (distance <= 1.15) return 80
+  if (distance <= 1.8) return 55
+  if (distance <= 2.5) return 30
+  return 0
+}
+
+function calculateWideBonus(targetX: number): number {
+  const distanceFromCenter = Math.abs(targetX)
+
+  if (distanceFromCenter >= 1.6) return 25
+  if (distanceFromCenter >= 1.1) return 15
+  if (distanceFromCenter >= 0.6) return 5
+
   return 0
 }
 
@@ -46,7 +63,7 @@ interface GameSceneProps {
   horizontalDirection: number
   target: Target
   attemptId: number
-  onLanded: (x: number, z: number) => void
+  onLanded: (x: number, z: number, clearedNet: boolean) => void
 }
 
 function GameScene({
@@ -105,6 +122,31 @@ function GameScene({
     [trajectory]
   )
 
+  // Check whether the shuttle crosses the net above its height.
+  const clearedNet = useMemo(() => {
+    for (let i = 1; i < trajectory.length; i++) {
+      const previous = trajectory[i - 1]
+      const current = trajectory[i]
+
+      if (
+        previous.position.z > 0 &&
+        current.position.z <= 0
+      ) {
+        const fraction =
+          previous.position.z /
+          (previous.position.z - current.position.z)
+
+        const heightAtNet =
+          previous.position.y +
+          (current.position.y - previous.position.y) * fraction
+
+        return heightAtNet >= NET_HEIGHT
+      }
+    }
+
+    return false
+  }, [trajectory])
+
   useEffect(() => {
     elapsed.current = 0
     currentIndex.current = 0
@@ -142,7 +184,8 @@ function GameScene({
 
       onLanded(
         point.position.x,
-        point.position.z
+        point.position.z,
+        clearedNet
       )
     }
   })
@@ -152,7 +195,7 @@ function GameScene({
       {/* Target zone */}
       <group position={[target.x, 0.045, target.z]}>
         <mesh rotation={[-Math.PI / 2, 0, 0]}>
-          <circleGeometry args={[0.65, 48]} />
+          <circleGeometry args={[0.55, 48]} />
           <meshBasicMaterial
             color="#22c55e"
             transparent
@@ -162,7 +205,7 @@ function GameScene({
         </mesh>
 
         <mesh rotation={[-Math.PI / 2, 0, 0]}>
-          <ringGeometry args={[0.48, 0.56, 48]} />
+          <ringGeometry args={[0.43, 0.5, 48]} />
           <meshBasicMaterial
             color="#4ade80"
             side={THREE.DoubleSide}
@@ -170,7 +213,7 @@ function GameScene({
         </mesh>
 
         <mesh rotation={[-Math.PI / 2, 0, 0]}>
-          <ringGeometry args={[0.13, 0.18, 32]} />
+          <ringGeometry args={[0.12, 0.17, 32]} />
           <meshBasicMaterial
             color="#ffffff"
             side={THREE.DoubleSide}
@@ -199,8 +242,8 @@ function GameScene({
 }
 
 export default function TargetChallenge() {
-  const [speed, setSpeed] = useState(220)
-  const [launchAngle, setLaunchAngle] = useState(10)
+  const [speed, setSpeed] = useState(65)
+  const [launchAngle, setLaunchAngle] = useState(12)
   const [horizontalDirection, setHorizontalDirection] = useState(0)
 
   const [target, setTarget] = useState<Target>(createTarget)
@@ -209,32 +252,63 @@ export default function TargetChallenge() {
   const [attemptId, setAttemptId] = useState(0)
   const [result, setResult] = useState<LandingResult | null>(null)
 
+  const scoredAttemptRef = useRef(-1)
+
   const gameOver = round > TOTAL_ROUNDS
 
-  const handleLanding = useCallback((x: number, z: number) => {
-    setResult(previous => {
-      if (previous) return previous
+  const handleLanding = useCallback((
+    x: number,
+    z: number,
+    clearedNet: boolean
+  ) => {
+    if (scoredAttemptRef.current === attemptId) return
 
-      const distance = Math.sqrt(
-        Math.pow(x - target.x, 2) +
-        Math.pow(z - target.z, 2)
-      )
+    scoredAttemptRef.current = attemptId
 
-      const points = calculateScore(distance)
+    const distance = Math.sqrt(
+      Math.pow(x - target.x, 2) +
+      Math.pow(z - target.z, 2)
+    )
 
-      setTotalScore(current => current + points)
+    const insideCourt =
+      Math.abs(x) <= SINGLES_HALF_WIDTH &&
+      z < 0 &&
+      z >= OPPONENT_BASELINE
 
-      return {
-        x,
-        z,
-        distance,
-        points,
+    let reason: string | null = null
+    let basePoints = 0
+    let wideBonus = 0
+
+    if (!clearedNet) {
+      reason = 'The shuttle did not clear the net.'
+    } else if (!insideCourt) {
+      reason = 'The shuttle landed outside the opponent’s court.'
+    } else {
+      basePoints = calculateAccuracyScore(distance)
+
+      if (basePoints > 0) {
+        wideBonus = calculateWideBonus(target.x)
       }
+    }
+
+    const points = basePoints + wideBonus
+
+    setResult({
+      x,
+      z,
+      distance,
+      points,
+      basePoints,
+      wideBonus,
+      reason,
     })
-  }, [target])
+
+    setTotalScore(current => current + points)
+  }, [target, attemptId])
 
   const launchShot = () => {
     if (result || gameOver) return
+
     setAttemptId(current => current + 1)
   }
 
@@ -244,6 +318,7 @@ export default function TargetChallenge() {
       return
     }
 
+    scoredAttemptRef.current = -1
     setRound(current => current + 1)
     setTarget(createTarget())
     setResult(null)
@@ -251,13 +326,14 @@ export default function TargetChallenge() {
   }
 
   const restartGame = () => {
+    scoredAttemptRef.current = -1
     setRound(1)
     setTotalScore(0)
     setTarget(createTarget())
     setResult(null)
     setAttemptId(0)
-    setSpeed(220)
-    setLaunchAngle(10)
+    setSpeed(65)
+    setLaunchAngle(12)
     setHorizontalDirection(0)
   }
 
@@ -266,7 +342,7 @@ export default function TargetChallenge() {
       <div className="challenge-header">
         <div>
           <h1>Target Challenge</h1>
-          <p>Test your shot accuracy and hit the target.</p>
+          <p>Clear the net, land in bounds, and hit your target.</p>
         </div>
 
         <div className="challenge-stats">
@@ -286,7 +362,8 @@ export default function TargetChallenge() {
         <div className="challenge-finish">
           <h2>Game Complete!</h2>
           <div className="final-score">{totalScore}</div>
-          <p>Your final score out of 1000 points</p>
+          <p>Your final score out of 1,250 points</p>
+
           <button onClick={restartGame}>
             Play Again
           </button>
@@ -295,11 +372,6 @@ export default function TargetChallenge() {
         <>
           <div className="challenge-game-layout">
             <div className="challenge-court">
-              <div className="court-label">
-                <span>OPPONENT</span>
-                <span>YOUR SIDE</span>
-              </div>
-
               <Canvas
                 camera={{
                   position: [0, 11, 10],
@@ -349,8 +421,8 @@ export default function TargetChallenge() {
 
                 <input
                   type="range"
-                  min="100"
-                  max="280"
+                  min="45"
+                  max="100"
                   step="5"
                   value={speed}
                   disabled={!!result}
@@ -358,8 +430,8 @@ export default function TargetChallenge() {
                 />
 
                 <div className="range-labels">
+                  <span>45 mph</span>
                   <span>100 mph</span>
-                  <span>280 mph</span>
                 </div>
               </div>
 
@@ -371,8 +443,8 @@ export default function TargetChallenge() {
 
                 <input
                   type="range"
-                  min="-5"
-                  max="35"
+                  min="0"
+                  max="30"
                   step="1"
                   value={launchAngle}
                   disabled={!!result}
@@ -380,8 +452,8 @@ export default function TargetChallenge() {
                 />
 
                 <div className="range-labels">
-                  <span>-5°</span>
-                  <span>35°</span>
+                  <span>0°</span>
+                  <span>30°</span>
                 </div>
               </div>
 
@@ -393,8 +465,8 @@ export default function TargetChallenge() {
 
                 <input
                   type="range"
-                  min="-30"
-                  max="30"
+                  min="-25"
+                  max="25"
                   step="1"
                   value={horizontalDirection}
                   disabled={!!result}
@@ -404,8 +476,8 @@ export default function TargetChallenge() {
                 />
 
                 <div className="range-labels">
-                  <span>Left -30°</span>
-                  <span>Right +30°</span>
+                  <span>Left -25°</span>
+                  <span>Right +25°</span>
                 </div>
               </div>
 
@@ -425,9 +497,23 @@ export default function TargetChallenge() {
                     +{result.points} points
                   </div>
 
-                  <p>
-                    Distance from target: {result.distance.toFixed(2)} m
-                  </p>
+                  {result.reason && (
+                    <p>{result.reason} 0 points awarded.</p>
+                  )}
+
+                  {!result.reason && (
+                    <>
+                      <p>
+                        Distance from target: {result.distance.toFixed(2)} m
+                      </p>
+                      <p>
+                        Accuracy points: {result.basePoints}
+                      </p>
+                      <p>
+                        Wide target bonus: +{result.wideBonus}
+                      </p>
+                    </>
+                  )}
 
                   <button
                     className="next-round-button"
@@ -444,12 +530,18 @@ export default function TargetChallenge() {
             <h3>Scoring System</h3>
 
             <div className="scoring-grid">
-              <div><strong>100 pts</strong><span>Within 0.35 m</span></div>
-              <div><strong>75 pts</strong><span>Within 0.75 m</span></div>
-              <div><strong>40 pts</strong><span>Within 1.5 m</span></div>
-              <div><strong>10 pts</strong><span>Within 2.5 m</span></div>
+              <div><strong>100 pts</strong><span>Within 0.65 m</span></div>
+              <div><strong>80 pts</strong><span>Within 1.15 m</span></div>
+              <div><strong>55 pts</strong><span>Within 1.8 m</span></div>
+              <div><strong>30 pts</strong><span>Within 2.5 m</span></div>
               <div><strong>0 pts</strong><span>Beyond 2.5 m</span></div>
             </div>
+
+            <p>
+              Wide target bonus: up to 25 extra points for targets closer
+              to the sidelines. The shuttle must clear the net and land
+              inside the opponent’s singles court.
+            </p>
           </div>
         </>
       )}
